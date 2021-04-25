@@ -1,0 +1,182 @@
+---
+title: "Projeto_tcc_camila"
+author: "Leticia Souza"
+date: "24 de abril de 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, message = F, warning = F, results = F)
+```
+
+**Limpeza da base do Polity V**
+
+```{r }
+library(readxl)
+library(tidyverse)
+library(skimr)
+
+p5v2018 <- read_excel("p5v2018.xls", sheet = "p5v2018")
+
+glimpse(p5v2018)
+```
+
+O código acima apresenta o carregamento das bibliotecas do _readxl_ e _tidyverse_, utilizadas para permitir a abertura do arquivo da base bruta e das funções utilizadas na análise dos dados.
+Logo depois, salvo em _p5v2018_ a base original, importada pela função *read_excel*. Em seguida, utilizo a função *glimpse* para checar a organização dos dados.
+
+```{r}
+pv2018_mod1 <- p5v2018 %>% 
+  select(scode, year, polity, polity2) %>% 
+  filter(year >= 1970, 
+         year <= 2017) %>% 
+  mutate(year = as.character(year))
+
+
+skim(pv2018_mod1)
+```
+
+Aqui, começo a seleção dos casos desejados. Como o objetivo nesta base é apenas algumas variáveis, seleciona-se apenas as variáveis desejadas. Depois, é feito um filtro para considerar apenas os dados de 1970 a 2017. Também é realizada uma mudança na variável ano, tranformando de _int_ para _chr_, facilitando a equalização do padrão com a próxima base a ser analisada.
+Depois disso, é realizado um "scanner" dos dados através da função *skim*, que tetorna a distribuição das observações por variável, indicando informações importantes sobre dados omitidos, contagem e cálculos aritméticos. 
+
+Aqui, o trabalho com a base do Polity V é finalizado, com a base final *pv2018_mod1*. Inicia-se, então, a limpeza da outra base em análise.
+
+
+
+**Limpeza da base do Edstats**
+
+```{r}
+edstats <- read.csv("EdStatsData.csv")
+
+glimpse(edstats)
+skim(edstats)
+```
+
+Neste ponto, repito alguns passos anteriores. Atribui a edstats a base original que abro no arquivo. Com _glimpse_ e _skim_ faço uma primeira vista dos dados.
+
+```{r}
+edstats_filtrado <- edstats %>% 
+  select(-c( "X2020", "X2025", "X2030", "X2035", "X2040", "X2045", "X2050", "X2055", "X2060", "X2065", "X2070", "X2075", "X2080", "X2085", "X2090", "X2095", "X2100", "X"))
+```
+
+A etapa apresenta a seleção das variáveis que descrevem os anos pela exclusão das indesejadas (por isso o _-c()_), deixando apenas de 1970 a 2017. Como cada ano é uma variável, foi possível fazer essa filtragem por _select()_
+
+```{r}
+edstats_mod <- edstats_filtrado %>% 
+  pivot_longer(
+  cols = starts_with("X"), 
+  names_to = "year", 
+  values_to = "value"
+)
+
+glimpse(edstats_mod)
+```
+
+A partir da base filtrada pela seleção das variáveis de anos, procedo para a mudança do modo da base. A partir daqui, todas(e **apenas**) as variáveis ano são trocadas, passando a representar linhas. Assim, a nova variável com os anos passa a se chamar _year_, e seus valores passam para uma nova variável chamada _value_.
+Em seguida, passo um comando para verificar as características da base modificada.
+
+```{r}
+Variaveis_edstats <- read_excel("Variaveis_edstats.xlsx") %>% 
+  select(Código) %>% 
+  as.vector()
+
+edstats_mod <- edstats_mod %>% 
+  filter(Indicator.Code %in% Variaveis_edstats$Código)
+```
+
+Externamente, uma outra base continha os indicadores desejados para análise nesta base. A variável com esses indicadores se chamava _Código_. Portanto, abro o arquivo no R, seleciono pela variável de interesse e a transformo em vetor.
+Depois, em um novo objeto, adiciono a base modificada anteriormente filtrada agora apenas com os indicadores identificados em _Código_ na variável importada. Assim, em vez de selecionar uma por uma as linhas de indicadores, faço a combinação e seleciono apenas as que batem com a condição.
+
+
+```{r}
+agregados <- c("WLD", "ARB", "EAP","EAS", "ECA","ECS", "EMU", "EUU", "HPC", "LCN", "LDC", "LIC", "LMC", "LMY", "MEA", "MIC", "MNA", "NAC", "OED", "SAS", "SSA", "SSF", "UMC", "HIC", "LAC")
+
+edstats_mod <- edstats_mod %>% 
+  filter(!Country.Code %in% agregados) %>% 
+  mutate(year = substring(year, 2))
+```
+
+Na base, além de países, há alguns dados agregados que reúnem grupos de países por região, continente ou desenvolvimento econômico. Para fins de objetividade, esses dados precisavam ser retirados. Para isso, crianos o objeto _agregados_ e adicionamos todos os códigos desses casos. 
+Depois, modificando na prórpia base, filtra-se pela variável do código todos os casos que não respeitam o padrão ocntido em agregado, excluindo esses casos. Em seguida, apenas para ajuste e facilitação futura, muda-se a variável _year_, já que todos os anos tinham um "X" na frente, exemplo "X1990". Assim, todos os "X" foram tirados da variável, deixando ela apenas com os números.
+
+Recapitualndo, nossa base de interesse modificada em anos como linhas de uma variável, com apenas alguns anos (1970-2017) e contendo apenas os indicadores e países de interesse é *edstats_mod*
+
+```{r}
+banco_joined <- left_join(edstats_mod, pv2018_mod1, 
+                          by = c("Country.Code" = "scode",
+                                 "year" = "year"))
+View(banco_joined)
+```
+
+Aqui, fazemos a união dos banco. O *left_join* une a base do Polity V já limpa com a base do Edstat, também já limpa. A união é feita pelas variáveis de código dos países e pelo ano, de modo quenenhum dado seja repetido além do necessário.
+O resultado pode ser visto pelo _View()_, que apresenta as colunas(8) e linhas(>350 mil) totais.
+
+A nova base, que une a base Polity V e Edstats é *base_joined*.
+
+**Limpeza da base banco_joined**
+
+```{r}
+banco_joined_final <- banco_joined %>% 
+  filter(year >= 1975,
+         year <= 2015)
+```
+
+Com base em algumas decisões, algumas mudanças e expectativas foram apontadas. A primeira delas é a diminuição dos anos da base, de 1970-2017 para **1975-2015**. E é isso que o código acima apresenta: em *banco_joined_final*(e prometo que essa será a última troca de nome desse banco principal), filtramos pelos anos de interesse, e excluímos todos os casos que não obedecem a esse intervalo de tempo.
+
+```{r}
+a <- banco_joined_final %>% 
+  group_by(Country.Code, Indicator.Code) %>% 
+  skim(value, polity)
+```
+
+A nível de realizar alguns testes, criamos um objeto _a_, contendo a base final agrupada pelo país e os indicadores e um detalhamentos dos dados de _value_ e de _polity_ associados a essa variáveis de agrupamento. O objetivo principal é observar a quantidade e a taxa de dados válidos presente em cada caso. O _value_ apresenta uma grande quantidade de valores inválidos, enquanto _polity_ se sustenta bem entre os países.
+
+```{r}
+b <- a %>% 
+  filter(skim_variable == "value") %>% 
+  filter(complete_rate >= .80) %>%      # ".80" pode ser qualquer número entre 0 e 1.
+  select(Country.Code, Indicator.Code)
+```
+
+A base _b_ tem por objetivo fazer mais alguns refinamentos. Por _value_ ser uma variável com muitas observações omitidas/inválidas, foi preciso criar um objeto que filtra por essa variável e pela variável de taxa de dados válidos montada por _skim()_, que depende de cada analista, mas no exemplo foi indicada como 80% de válidos desejados. Depois, selecionou-se pela variável de identificação dos países e dos indicadores associados a eles.
+
+O exemplo abaixo mostra como obter a contagem, por variável observada, dos dados filtrados e selecioandos acima. Foi importante para visualizar, no caso, em ordem descente, quantos indicadores guardavam pelo menos 80% dos dados válidos, e para quantos países.
+```{r}
+rate <- b %>% 
+  group_by(Indicator.Code) %>% 
+  summarise(n = n()) %>% 
+  arrange(desc(n))
+```
+
+
+Havendo determinado alguns limites e obejtivos, a segunda mudança tem a ver com o código abaixo, que demonstra a seleção de indicadores por quantidade de países que possui medidas válidas para eles.
+
+```{r}
+indicator_filter <- b %>% 
+  group_by(Indicator.Code) %>% 
+  summarise(n = n()) %>% 
+  arrange(desc(n)) %>% 
+  filter(n >= 30) %>% # este número pode varia, depende de quanto casos em cada indicado se deseje.
+  select(Indicator.Code) %>% 
+  inner_join(b, by = "Indicator.Code") %>% 
+  select(Indicator.Code, Country.Code)
+```
+
+Sendo feita a filtragem pela taxa de dados válidos escolhida, e sabendo quantos indicadores obedecem à taxa e quantos países neles, o próximo passo é criar um novo objeto que contém um agrupamento por indicador, permitindo a filtragem pelo número mínimo de países desejado (em nosso caso, a partir de 30 países por indicador.) 
+Em seguida, selecionou-se a variável de indicador, sendo possível a junção desta base *indicator_filter* com a base _b_, que contém os dados de taxa de dados válidos. E então, selecionou-se mais uma vez, agora por indicador e por país, evitando que países de fora do recorte por taxa de dados válidos em _Indicator.Code_ sejam selecionados.
+
+No fim, *indicator_filter* contém os indicadores que respeitam 80% dos dados válidos e os países correspondentes a cada indicador.
+
+```{r}
+banco_joined_final %>% 
+  filter(Indicator.Code %in% indicator_filter$Indicator.Code, 
+         Country.Code %in% indicator_filter$Country.Code) %>% 
+  write_delim("basefinal_60.csv", delim = ";")
+```
+
+Para finalizar, do banco final(*banco_joined_final*) são filtradas a variável de indicadores onde os indicadores estão também presentes em *indicator_filter*, e a variável de país que também se apresentam em *indicator_filter*.
+Depois, essa base é salva em _.csv_ no repositório do projeto.
+
+
+O quatro últimos chunks foram repetidos 5 vezes, criando bases _.csv_ para 5 diferentes taxas de dados válidos(.60, .65, .70, .75 e .80). Respectivamente, cada seleção de taxa continha 13, 12, 9, 9(porém diferentes) e 8 indicadores com dados para mais de 30 países.
+
+
