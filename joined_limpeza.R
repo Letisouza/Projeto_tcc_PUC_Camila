@@ -9,7 +9,7 @@ banco_joined_final <- banco_joined %>%
 
 # Checar NAs em polity
 
-count_teste = banco_joined_final %>% 
+count_teste <- banco_joined_final %>% 
   group_by(ï..Country.Name, polity2) %>%
   summarise(varc=n())
 
