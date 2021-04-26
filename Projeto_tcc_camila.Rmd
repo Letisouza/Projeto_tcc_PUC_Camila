@@ -2,7 +2,9 @@
 title: "Projeto_tcc_camila"
 author: "Leticia Souza"
 date: "24 de abril de 2021"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -26,7 +28,7 @@ Logo depois, salvo em _p5v2018_ a base original, importada pela função *read_e
 
 ```{r}
 pv2018_mod1 <- p5v2018 %>% 
-  select(scode, year, polity, polity2) %>% 
+  select(scode, year, polity, polity2, country) %>% 
   filter(year >= 1970, 
          year <= 2017) %>% 
   mutate(year = as.character(year))
@@ -102,12 +104,12 @@ Recapitualndo, nossa base de interesse modificada em anos como linhas de uma var
 
 ```{r}
 banco_joined <- left_join(edstats_mod, pv2018_mod1, 
-                          by = c("Country.Code" = "scode",
+                          by = c("ï..Country.Name" = "country",
                                  "year" = "year"))
 View(banco_joined)
 ```
 
-Aqui, fazemos a união dos banco. O *left_join* une a base do Polity V já limpa com a base do Edstat, também já limpa. A união é feita pelas variáveis de código dos países e pelo ano, de modo quenenhum dado seja repetido além do necessário.
+Aqui, fazemos a união dos banco. O *left_join* une a base do Polity V já limpa com a base do Edstat, também já limpa. A união é feita pelas variáveis com os nomes dos países e pelo ano, de modo que nenhum dado seja repetido além do necessário.
 O resultado pode ser visto pelo _View()_, que apresenta as colunas(8) e linhas(>350 mil) totais.
 
 A nova base, que une a base Polity V e Edstats é *base_joined*.
@@ -123,8 +125,32 @@ banco_joined_final <- banco_joined %>%
 Com base em algumas decisões, algumas mudanças e expectativas foram apontadas. A primeira delas é a diminuição dos anos da base, de 1970-2017 para **1975-2015**. E é isso que o código acima apresenta: em *banco_joined_final*(e prometo que essa será a última troca de nome desse banco principal), filtramos pelos anos de interesse, e excluímos todos os casos que não obedecem a esse intervalo de tempo.
 
 ```{r}
+count_teste <- banco_joined_final %>% 
+  group_by(ï..Country.Name, polity2) %>%
+  summarise(varc=n())
+```
+
+Com a ideia de utilizar apenas os dados que tiverem resultados válidos em _polity2_, esse código conta a frequência de dados de regime por país. Depois de selecionar todos os países que só possuíam resultados inválidos para todos os anos e salvar seus nomes externamente, segui para a limpeza no banco.
+
+```{r}
+paises_na <- read_excel("paises_polity2_na.xlsx") %>% 
+  select(country_na_polity2) %>% 
+  as.vector()
+
+paises_na
+
+banco_joined_final <- banco_joined_final %>% 
+  filter(!ï..Country.Name %in% paises_na$country_na_polity2)
+```
+
+A base externa com os nomes dos países que possuem dados inválidos foi carregada e tranformada em vetor.
+Depois, modifico a base final filtrando pelos países que não estão presentes no vetor relacionado ao dataset externo carregada.Assim, agora o *banco_joined_final* possui apenas os países com ao menos um dado válido para _polity2_.
+
+
+
+```{r}
 a <- banco_joined_final %>% 
-  group_by(Country.Code, Indicator.Code) %>% 
+  group_by(ï..Country.Name, Indicator.Code) %>% 
   skim(value, polity)
 ```
 
@@ -133,11 +159,11 @@ A nível de realizar alguns testes, criamos um objeto _a_, contendo a base final
 ```{r}
 b <- a %>% 
   filter(skim_variable == "value") %>% 
-  filter(complete_rate >= .80) %>%      # ".80" pode ser qualquer número entre 0 e 1.
-  select(Country.Code, Indicator.Code)
+  filter(complete_rate >= .70) %>%      # ".70" pode ser qualquer número entre 0 e 1.
+  select(ï..Country.Name, Indicator.Code)
 ```
 
-A base _b_ tem por objetivo fazer mais alguns refinamentos. Por _value_ ser uma variável com muitas observações omitidas/inválidas, foi preciso criar um objeto que filtra por essa variável e pela variável de taxa de dados válidos montada por _skim()_, que depende de cada analista, mas no exemplo foi indicada como 80% de válidos desejados. Depois, selecionou-se pela variável de identificação dos países e dos indicadores associados a eles.
+A base _b_ tem por objetivo fazer mais alguns refinamentos. Por _value_ ser uma variável com muitas observações omitidas/inválidas, foi preciso criar um objeto que filtra por essa variável e pela variável de taxa de dados válidos montada por _skim()_, que depende de cada analista, mas no exemplo foi indicada como 80% de válidos desejados. Depois, selecionou-se pela variável de nome dos países e dos indicadores associados a eles.
 
 O exemplo abaixo mostra como obter a contagem, por variável observada, dos dados filtrados e selecioandos acima. Foi importante para visualizar, no caso, em ordem descente, quantos indicadores guardavam pelo menos 80% dos dados válidos, e para quantos países.
 ```{r}
@@ -155,10 +181,10 @@ indicator_filter <- b %>%
   group_by(Indicator.Code) %>% 
   summarise(n = n()) %>% 
   arrange(desc(n)) %>% 
-  filter(n >= 30) %>% # este número pode varia, depende de quanto casos em cada indicado se deseje.
+  filter(n >= 30) %>% 
   select(Indicator.Code) %>% 
   inner_join(b, by = "Indicator.Code") %>% 
-  select(Indicator.Code, Country.Code)
+  select(Indicator.Code, ï..Country.Name)
 ```
 
 Sendo feita a filtragem pela taxa de dados válidos escolhida, e sabendo quantos indicadores obedecem à taxa e quantos países neles, o próximo passo é criar um novo objeto que contém um agrupamento por indicador, permitindo a filtragem pelo número mínimo de países desejado (em nosso caso, a partir de 30 países por indicador.) 
@@ -167,16 +193,38 @@ Em seguida, selecionou-se a variável de indicador, sendo possível a junção d
 No fim, *indicator_filter* contém os indicadores que respeitam 80% dos dados válidos e os países correspondentes a cada indicador.
 
 ```{r}
-banco_joined_final %>% 
+banco_70 <- banco_joined_final %>% 
   filter(Indicator.Code %in% indicator_filter$Indicator.Code, 
-         Country.Code %in% indicator_filter$Country.Code) %>% 
-  write_delim("basefinal_60.csv", delim = ";")
+         ï..Country.Name %in% indicator_filter$ï..Country.Name) %>% 
+  write_delim("basefinal_70.csv", delim = ";")
 ```
 
-Para finalizar, do banco final(*banco_joined_final*) são filtradas a variável de indicadores onde os indicadores estão também presentes em *indicator_filter*, e a variável de país que também se apresentam em *indicator_filter*.
+Para finalizar, do banco final(*banco_joined_final*) são filtradas a variável de indicadores onde os esses estão também presentes em *indicator_filter*, e a variável de país que também se apresentam em *indicator_filter*.
 Depois, essa base é salva em _.csv_ no repositório do projeto.
 
 
-O quatro últimos chunks foram repetidos 5 vezes, criando bases _.csv_ para 5 diferentes taxas de dados válidos(.60, .65, .70, .75 e .80). Respectivamente, cada seleção de taxa continha 13, 12, 9, 9(porém diferentes) e 8 indicadores com dados para mais de 30 países.
+O resultado é a base *banco_70*, com 9 variáveis e >49 mil observações distribuídas em 9 indicadores educacionais.
+
+```{r}
+indicator_filter_br <- b %>% 
+  group_by(Indicator.Code) %>% 
+  summarise(n = n()) %>% 
+  arrange(desc(n)) %>% 
+  filter(n >= 30) %>% 
+  select(Indicator.Code) %>% 
+  inner_join(b, by = "Indicator.Code") %>% 
+  select(Indicator.Code, ï..Country.Name) %>% 
+  filter(ï..Country.Name == "Brazil")
+
+
+banco_70_br <- banco_joined_final %>% 
+  filter(Indicator.Code %in% indicator_filter_br$Indicator.Code, 
+         ï..Country.Name %in% indicator_filter_br$ï..Country.Name) %>% 
+  write_delim("basefinal_70_br.csv", delim = ";")
+```
+
+Os últimos 2 processos são repetidos, com os objetivo de agrupar os códigos relacionaod apenas ao Brasil. O objeto *indicator_filter_br* agora possui um filtro no final para selecionar apenas o país. 
+Depois, em *banco_70_br* estão guardados os dados sobre o Brasil que passam pela regra dos 70% de dados válidos. O resultado são 41 observações sobre 9 variáveis relacionados a apenas 1 indicador educacional.
+
 
 
